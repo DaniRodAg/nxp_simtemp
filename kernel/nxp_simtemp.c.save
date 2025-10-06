@@ -1,0 +1,159 @@
+#include <linux/kernel.h>		/*Needed for Kern alert*/
+#include <linux/init.h>			//
+#include "nxp_simtemp.h"
+
+/* DEVICE CONTROLS */
+#define TXT_BUF_SIZE 10
+static char mode_buf[TXT_BUF_SIZE] = "RAMP";
+
+/* MODE ATTRIBUTES */
+
+ssize_t	mode_store(struct device *d, struct device_attribute *a, 
+		   const char *buf, size_t len)
+{
+	int to_copy = len < sizeof(mode_buf) ? len : sizeof(mode_buf);
+	
+	strncpy(mode_buf, buf, to_copy);
+	return to_copy;
+}
+
+ssize_t mode_show(struct device *d, struct device_attribute *a, 
+                   char *buf)
+{
+	strcpy(buf, mode_buf);
+	return strlen(mode_buf);
+}
+
+DEVICE_ATTR(mode, 0660, mode_show, mode_store);
+
+/* SAMPLING ATTRIBUTES */
+
+static int sampling_ms = 200;
+
+DEVICE_INT_ATTR(sampling_ms, 0660, sampling_ms);
+
+/* HR timer global variables*/
+static struct hrtimer my_hrtimer;
+ktime_t interval;
+static int temp = 0;
+
+struct timespec64 ts;
+struct tm tm;
+
+/* HR timer functions*/
+
+/* HR timer callback for periodic timer */
+static enum hrtimer_restart test_hrtimer_handler(struct hrtimer *timer)
+{
+	/* Get current wall-clock time */
+	ktime_get_real_ts64(&ts);
+	time64_to_tm(ts.tv_sec, 0, &tm);
+
+	/* Build human-readable string with milliseconds */
+	//spin_lock(&time_lock);
+
+	/* Print current time with milliseconds */
+	
+	pr_info("%04ld-%02d-%02d %02d:%02d:%02d.%03ld UTC\n",
+	        tm.tm_year + 1900,
+	        tm.tm_mon + 1,
+        	tm.tm_mday,
+	        tm.tm_hour,
+        	tm.tm_min,
+	        tm.tm_sec,
+        	ts.tv_nsec / 1000000);
+	
+	//spin_unlock(&time_lock);
+	
+	if(!(mode_buf, "RAMP"))
+		temp += 100;
+	else if (!strcmp(mode_buf, "NOISY"))
+		temp = get_random_u32();
+	else if	(!strcmp(mode_buf, "NORMAL")) 
+		temp = 25000;
+	else 
+	{
+		pr_info("%s", mode_buf);
+		strcpy(mode_buf, "NORMAL");
+		temp = 25000;
+	}
+	
+	pr_info("Current temperature is %d mdeg C",temp);
+	/* Re-arm the timer for periodic execution */
+	interval = ms_to_ktime(sampling_ms);       // 200 ms period
+	hrtimer_forward_now(timer, interval); // advance timer to next period
+
+	return HRTIMER_RESTART; // keep the timer running
+}
+
+
+/* MISC DEVICE */
+
+static const struct file_operations fops = {
+	.owner = THIS_MODULE,
+	//.read = my_read,
+	//.write = my_write,
+	//.open = my_open,
+	//.release = my_close,
+};
+
+static struct miscdevice simtemp_device = {
+	.name = "simtemp",
+	.minor = MISC_DYNAMIC_MINOR,
+	.fops = &fops,
+};
+
+
+/**
+ * @brief This function is called, when the module is loaded into the kernel
+ */
+
+static int __simtemp_init(void)
+{
+	/*Init miscdevice */
+	pr_debug("simtemp - Register misc device\n");
+
+	// Register misc char device
+	if(misc_register(&simtemp_device)) {
+		return -ENODEV;
+	}
+	
+	if(device_create_file(simtemp_device.this_device, &dev_attr_sampling_ms.attr)) {
+                return -ENODEV;
+        }
+
+	if(device_create_file(simtemp_device.this_device, &dev_attr_mode)) {
+                return -ENODEV;
+        }
+
+
+
+	/* Init of hrtimer */
+	ktime_t interval = ms_to_ktime(1000); // 200 ms
+	hrtimer_init(&my_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	my_hrtimer.function = &test_hrtimer_handler;
+	hrtimer_start(&my_hrtimer, interval, HRTIMER_MODE_REL);
+
+	return 0;
+}
+
+
+/**
+ * @brief This function is called, when the module is removed from the kernel
+ */
+
+static void __simtemp_exit(void)
+{
+	hrtimer_cancel(&my_hrtimer);
+	device_remove_file(simtemp_device.this_device, &dev_attr_sampling_ms.attr);
+	device_remove_file(simtemp_device.this_device, &dev_attr_mode);
+	misc_deregister(&simtemp_device);
+	pr_notice("simtemp - Goodbye, Kernel!\n");
+}
+
+module_init(__simtemp_init);
+module_exit(__simtemp_exit);
+
+
+
+
