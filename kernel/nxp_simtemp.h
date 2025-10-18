@@ -21,6 +21,7 @@
 #include <linux/wait.h>         /* wait queues */
 #include <linux/poll.h>
 #include <linux/timekeeping.h>
+#include <linux/workqueue.h>
 
 #include <linux/miscdevice.h>
 
@@ -34,14 +35,20 @@ MODULE_DESCRIPTION("Virtual Sensor + Alert Path");
 
 /* --- Defines ---*/
 #define TXT_BUF_SIZE 10
+#define BUF_COUNT    64		// number of readings stored
+#define BUF_SIZE     128	// max length per entry
 
 /* --- Function prototypes --- */
-static enum hrtimer_restart test_hrtimer_handler(struct hrtimer *timer);
+static enum hrtimer_restart my_hrtimer_handler(struct hrtimer *timer);
+ssize_t mode_store(struct device *d, struct device_attribute *a, 
+                   const char *buf, size_t len);
+ssize_t mode_show(struct device *d, struct device_attribute *a, 
+                   char *buf);
 static int      my_open(struct inode *inode, struct file *file);
 static int      my_release(struct inode *inode, struct file *file);
 static ssize_t  my_read(struct file *filp, char __user *buf, size_t len,loff_t * off);
 static unsigned int my_poll(struct file *filp, struct poll_table_struct *wait);
-
+static void my_work_handler(struct work_struct *work);
 
 
 //static int my_open(struct inode *inode, struct file *file);

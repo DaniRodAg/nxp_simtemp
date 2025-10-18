@@ -2,12 +2,14 @@
 #include "nxp_simtemp.h"
 
 //Waitqueue
-DECLARE_WAIT_QUEUE_HEAD(wait_queue_etx_data);
+static DECLARE_WAIT_QUEUE_HEAD(temp_waitqueue);
+static DEFINE_SPINLOCK(data_lock);
 
 /* BUFFER FOR DATA STORAGE */
-static char *data_buffer;
-static char kernel_buffer[64];
-static DEFINE_SPINLOCK(data_lock);
+static char kernel_buffer[BUF_COUNT][BUF_SIZE];
+static int head = 0;
+static int tail = 0;
+static int count = 0;
 
 /* DEVICE CONTROLS */
 static char mode_buf[TXT_BUF_SIZE] = "RAMP";
@@ -39,7 +41,9 @@ static int sampling_ms = 2000;
 DEVICE_INT_ATTR(sampling_ms, 0660, sampling_ms);
 
 /* THRESHOLD ALERT ATTRIBUTES */
-static int threshold_mC = 0;
+static int threshold_mC = 36000;
+static bool threshold_alert = 0;
+
 DEVICE_INT_ATTR(threshold_mC, 0660, threshold_mC);
 
 /* HR timer global variables*/
@@ -52,11 +56,50 @@ struct tm tm;
 
 /* HR timer functions*/
 
-/* HR timer callback for periodic timer */
-static enum hrtimer_restart test_hrtimer_handler(struct hrtimer *timer)
+DECLARE_WORK(workqueue,my_work_handler);
+
+static void my_work_handler(struct work_struct *work)
 {
+	unsigned long flags;
+	
+	/* Store current time and data into circular buffer */
+	spin_lock_irqsave(&data_lock, flags);
+
+	/* Print current time and data */
+	scnprintf(kernel_buffer[head],BUF_COUNT,
+		"%04ld-%02d-%02d %02d:%02d:%02d.%03ld UTC temp=%03d.%dC alert=%d\n",
+	        tm.tm_year + 1900,
+	        tm.tm_mon + 1,
+        	tm.tm_mday,
+	        tm.tm_hour,
+        	tm.tm_min,
+	        tm.tm_sec,
+        	ts.tv_nsec / 1000000, temp/1000,temp%1000,
+		threshold_alert);
+	
+	head = (head + 1) % BUF_COUNT;
+	if (count < BUF_COUNT)
+        	count++;
+	else
+        	tail = (tail + 1) % BUF_COUNT; // overwrite oldest
+	spin_unlock_irqrestore(&data_lock, flags);
+	
+	pr_info("%s", kernel_buffer[(head - 1 + BUF_COUNT) % BUF_COUNT]);
+	
+	if (temp > threshold_mC && !threshold_alert) {
+		threshold_alert = 1;
+		wake_up_interruptible(&temp_waitqueue); // notify waiting processes
+		pr_info("Temperature threshold exceeded: %d\n", temp);
+	}
+}
+
+/* HR timer callback for periodic timer */
+static enum hrtimer_restart my_hrtimer_handler(struct hrtimer *timer)
+{
+
 	/* Get current epoch time */
 	ktime_get_real_ts64(&ts);
+	
 	/* Epoch to UTC*/
 	time64_to_tm(ts.tv_sec, 0, &tm);
 	
@@ -64,27 +107,19 @@ static enum hrtimer_restart test_hrtimer_handler(struct hrtimer *timer)
 	if(!strcasecmp(mode_buf, "RAMP"))
 		temp += 100;				// Increment temperature in 100mdegC
 	else if (!strcasecmp(mode_buf, "NOISY"))
-		temp = get_random_u32();		// Random temperature values
+		temp = get_random_u32() % 100000;	// Random temperature values
 	else if	(!strcasecmp(mode_buf, "NORMAL")) 
 		temp = 25000;				// Set temperature to 25degC
 	else 						// If an incorrect mode is selected
 	{						//set to normal
-		pr_info("%s", mode_buf);
+
+		pr_info("Unknown mode: %s, resetting to NORMAL\n", mode_buf);
 		strcpy(mode_buf, "NORMAL");
 		temp = 25000;
 	}
 	
-	/* Print current time and data */
-	scnprintf(kernel_buffer,sizeof(kernel_buffer),"%04ld-%02d-%02d %02d:%02d:%02d.%03ld UTC temp = %03d.%dC\n",
-	        tm.tm_year + 1900,
-	        tm.tm_mon + 1,
-        	tm.tm_mday,
-	        tm.tm_hour,
-        	tm.tm_min,
-	        tm.tm_sec,
-        	ts.tv_nsec / 1000000, temp/1000,temp%1000);
-	pr_info("%s",kernel_buffer);
-
+	/* Schedule work qeue to avoid wedge*/
+	schedule_work(&workqueue);
 	/* Re-arm the timer for periodic execution */
 	interval = ms_to_ktime(sampling_ms);		// set time interval w input sampl time
 	hrtimer_forward_now(timer, interval);		// advance timer to next period
@@ -133,22 +168,31 @@ static int my_release(struct inode *inode, struct file *file)
 */
 static ssize_t my_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
 {
+        char kbuf[BUF_COUNT * BUF_SIZE];
+        size_t total_len = 0;
+        int i;
+        unsigned long flags;
 
-	int not_copied, delta, to_copy = (len + *off) < sizeof(kernel_buffer) ? len : (sizeof(kernel_buffer) - *off);
-	
-	pr_info("Read Function\n");
-	
-	if (*off >= sizeof(kernel_buffer))
-                return 0;
-        not_copied = copy_to_user(buf, &kernel_buffer[*off], to_copy);
-	
-	delta = to_copy - not_copied;
-        if(not_copied)
-                pr_warn("simtemp - could only copy %d bytes\n",delta);
+        if (*off > 0)
+                return 0; // only allow one read per open()
 
-	*off += delta;
+        spin_lock_irqsave(&data_lock, flags);
+        for (i = 0; i < count; i++) {
+                int idx = (tail + i) % BUF_COUNT;
+                total_len += scnprintf(kbuf + total_len, sizeof(kbuf) - total_len, "%s", kernel_buffer[idx]);
+                if (total_len >= sizeof(kbuf))
+                        break;
+        }
+        spin_unlock_irqrestore(&data_lock, flags);
 
-	return delta;
+        if (copy_to_user(buf, kbuf, total_len))
+                return -EFAULT;
+	
+	// reset event flag
+	threshold_alert = 0;
+	
+        *off += total_len;
+        return total_len;
 }
 
 /*
@@ -157,21 +201,11 @@ static ssize_t my_read(struct file *filp, char __user *buf, size_t len, loff_t *
 static unsigned int my_poll(struct file *filp, struct poll_table_struct *wait)
 {
 	__poll_t mask = 0;
+	poll_wait(filp, &temp_waitqueue, wait);
 
-	poll_wait(filp, &wait_queue_etx_data, wait);
-	pr_info("Poll function\n");
+	if (threshold_alert)
+		mask |= POLLIN | POLLRDNORM; // readable
 
-	if( can_read )
-	{
-		can_read = false;
-		mask |= ( POLLIN | POLLRDNORM );
-	}
-
-	if( can_write )
-	{
-		can_write = false;
-		mask |= ( POLLOUT | POLLWRNORM );
-	}
 	return mask;
 }
 
@@ -186,14 +220,8 @@ static int __simtemp_init(void)
 	/*Init miscdevice */
 	pr_info("simtemp - Register misc device\n");
 
-	// Allocate a page sized buffer
-	data_buffer = (char*) kzalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!data_buffer)
-		return -ENOMEM;
-
 	// Register misc char device
 	if(misc_register(&simtemp_device)) {
-		kfree(data_buffer);
 		return -ENODEV;
 	}
 	// CREATE SAMPLING TIME FILE 
@@ -214,7 +242,7 @@ static int __simtemp_init(void)
 	/* Init of hrtimer */
 	ktime_t interval = ms_to_ktime(1000); 
 	hrtimer_init(&my_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	my_hrtimer.function = &test_hrtimer_handler;
+	my_hrtimer.function = &my_hrtimer_handler;
 	hrtimer_start(&my_hrtimer, interval, HRTIMER_MODE_REL);
 
 	return 0;
@@ -228,9 +256,6 @@ static int __simtemp_init(void)
 static void __simtemp_exit(void)
 {
 	hrtimer_cancel(&my_hrtimer);
-	
-	// Free buffer
-	kfree(data_buffer);
 
 	device_remove_file(simtemp_device.this_device, &dev_attr_sampling_ms.attr);
 	device_remove_file(simtemp_device.this_device, &dev_attr_threshold_mC.attr);
