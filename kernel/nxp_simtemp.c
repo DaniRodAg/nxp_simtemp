@@ -1,8 +1,16 @@
 #include <linux/kernel.h>		/*Needed for Kern alert*/
 #include "nxp_simtemp.h"
 
-//Waitqueue
-static DECLARE_WAIT_QUEUE_HEAD(temp_waitqueue);
+static struct {
+	int temp;
+	char mode_buf[TXT_BUF_SIZE];
+	bool new_sample;
+	bool threshold_alert;
+}simtemp_sample;
+
+//Queues and spinlocks
+static DECLARE_WAIT_QUEUE_HEAD(temp_waitqueue); //Wait queue for poll events
+static DECLARE_WORK(workqueue,my_work_handler);	//Work queue for 
 static DEFINE_SPINLOCK(data_lock);
 
 /* BUFFER FOR DATA STORAGE */
@@ -11,27 +19,24 @@ static int head = 0;
 static int tail = 0;
 static int count = 0;
 
-/* DEVICE CONTROLS */
-static char mode_buf[TXT_BUF_SIZE] = "RAMP";
-static bool can_write = false;
-static bool can_read  = false;
-
-
 /* MODE ATTRIBUTES */
 ssize_t	mode_store(struct device *d, struct device_attribute *a, 
 		   const char *buf, size_t len)
 {
-	int to_copy = len < sizeof(mode_buf) ? len : sizeof(mode_buf);
-	strncpy(mode_buf, buf, to_copy);
-	mode_buf[strcspn(mode_buf, "\n")] = '\0';
+	int to_copy = len < sizeof(simtemp_sample.mode_buf) ? len : sizeof(simtemp_sample.mode_buf);
+	
+	strncpy(simtemp_sample.mode_buf, buf, to_copy);
+	simtemp_sample.mode_buf[strcspn(simtemp_sample.mode_buf, "\n")] = '\0';
+
 	return to_copy;
 }
 
 ssize_t mode_show(struct device *d, struct device_attribute *a, 
                    char *buf)
 {
-	strcpy(buf, mode_buf);
-	return strlen(mode_buf);
+	strcpy(buf, simtemp_sample.mode_buf);
+	
+	return strlen(simtemp_sample.mode_buf);
 }
 
 DEVICE_ATTR(mode, 0660, mode_show, mode_store);
@@ -42,82 +47,40 @@ DEVICE_INT_ATTR(sampling_ms, 0660, sampling_ms);
 
 /* THRESHOLD ALERT ATTRIBUTES */
 static int threshold_mC = 36000;
-static bool threshold_alert = 0;
 
 DEVICE_INT_ATTR(threshold_mC, 0660, threshold_mC);
 
 /* HR timer global variables*/
 static struct hrtimer my_hrtimer;
 ktime_t interval;
-static int temp = 0;
 
 struct timespec64 ts;
 struct tm tm;
 
 /* HR timer functions*/
 
-DECLARE_WORK(workqueue,my_work_handler);
-
 static void my_work_handler(struct work_struct *work)
-{
-	unsigned long flags;
-	
-	/* Store current time and data into circular buffer */
-	spin_lock_irqsave(&data_lock, flags);
+{	
+	temp_read();
 
-	/* Print current time and data */
-	scnprintf(kernel_buffer[head],BUF_COUNT,
-		"%04ld-%02d-%02d %02d:%02d:%02d.%03ld UTC temp=%03d.%dC alert=%d\n",
-	        tm.tm_year + 1900,
-	        tm.tm_mon + 1,
-        	tm.tm_mday,
-	        tm.tm_hour,
-        	tm.tm_min,
-	        tm.tm_sec,
-        	ts.tv_nsec / 1000000, temp/1000,temp%1000,
-		threshold_alert);
-	
-	head = (head + 1) % BUF_COUNT;
-	if (count < BUF_COUNT)
-        	count++;
-	else
-        	tail = (tail + 1) % BUF_COUNT; // overwrite oldest
-	spin_unlock_irqrestore(&data_lock, flags);
-	
+	simtemp_sample.new_sample = true;
+	pr_info("New sample available");
+	wake_up(&temp_waitqueue);
+
 	pr_info("%s", kernel_buffer[(head - 1 + BUF_COUNT) % BUF_COUNT]);
-	
-	if (temp > threshold_mC && !threshold_alert) {
-		threshold_alert = 1;
+
+	if (simtemp_sample.temp> threshold_mC && !simtemp_sample.threshold_alert) {
+		simtemp_sample.threshold_alert = 1;
 		wake_up_interruptible(&temp_waitqueue); // notify waiting processes
-		pr_info("Temperature threshold exceeded: %d\n", temp);
+		pr_info("Temperature threshold exceeded: %d\n",simtemp_sample.temp);
 	}
+	simtemp_sample.new_sample=false;
 }
 
 /* HR timer callback for periodic timer */
 static enum hrtimer_restart my_hrtimer_handler(struct hrtimer *timer)
 {
 
-	/* Get current epoch time */
-	ktime_get_real_ts64(&ts);
-	
-	/* Epoch to UTC*/
-	time64_to_tm(ts.tv_sec, 0, &tm);
-	
-	/* TEMPERATURE MODE SELECTION */
-	if(!strcasecmp(mode_buf, "RAMP"))
-		temp += 100;				// Increment temperature in 100mdegC
-	else if (!strcasecmp(mode_buf, "NOISY"))
-		temp = get_random_u32() % 100000;	// Random temperature values
-	else if	(!strcasecmp(mode_buf, "NORMAL")) 
-		temp = 25000;				// Set temperature to 25degC
-	else 						// If an incorrect mode is selected
-	{						//set to normal
-
-		pr_info("Unknown mode: %s, resetting to NORMAL\n", mode_buf);
-		strcpy(mode_buf, "NORMAL");
-		temp = 25000;
-	}
-	
 	/* Schedule work qeue to avoid wedge*/
 	schedule_work(&workqueue);
 	/* Re-arm the timer for periodic execution */
@@ -189,7 +152,7 @@ static ssize_t my_read(struct file *filp, char __user *buf, size_t len, loff_t *
                 return -EFAULT;
 	
 	// reset event flag
-	threshold_alert = 0;
+	simtemp_sample.threshold_alert = 0;
 	
         *off += total_len;
         return total_len;
@@ -200,15 +163,71 @@ static ssize_t my_read(struct file *filp, char __user *buf, size_t len, loff_t *
 */
 static unsigned int my_poll(struct file *filp, struct poll_table_struct *wait)
 {
-	__poll_t mask = 0;
+  __poll_t mask = 0;
+  
 	poll_wait(filp, &temp_waitqueue, wait);
+	pr_info("Poll function\n");
+  
+	if (simtemp_sample.threshold_alert)
+		mask |= POLLIN | POLLRDNORM; // readable
 
-	if (threshold_alert)
+	if (simtemp_sample.new_sample)
 		mask |= POLLIN | POLLRDNORM; // readable
 
 	return mask;
 }
 
+/*
+** @brief This function reads the temperature according to the selected mode
+*/
+static void temp_read(void)
+{
+	unsigned long flags;
+
+	/* Get current epoch time */
+	ktime_get_real_ts64(&ts);
+	
+	/* Epoch to UTC*/
+	time64_to_tm(ts.tv_sec, 0, &tm);
+	
+	/* TEMPERATURE MODE SELECTION */
+	if(!strcasecmp(simtemp_sample.mode_buf, "RAMP"))
+		simtemp_sample.temp+= 100;				// Increment temperature in 100mdegC
+	else if (!strcasecmp(simtemp_sample.mode_buf, "NOISY"))
+		simtemp_sample.temp= get_random_u32() % 100000;	// Random temperature values
+	else if	(!strcasecmp(simtemp_sample.mode_buf, "NORMAL")) 
+		simtemp_sample.temp= 25000;				// Set temperature to 25degC
+	else 						// If an incorrect mode is selected
+	{						//set to normal
+
+		pr_info("Unknown mode: %s, resetting to NORMAL\n", simtemp_sample.mode_buf);
+		strcpy(simtemp_sample.mode_buf, "NORMAL");
+		simtemp_sample.temp= 25000;
+	}
+
+	/* Store current time and data into circular buffer */
+	spin_lock_irqsave(&data_lock, flags);
+
+	/* Print current time and data */
+	scnprintf(kernel_buffer[head],BUF_COUNT,
+		"%04ld-%02d-%02d %02d:%02d:%02d.%03ld UTC temp=%03d.%dC alert=%d\n",
+	        tm.tm_year + 1900,
+	        tm.tm_mon + 1,
+        	tm.tm_mday,
+	        tm.tm_hour,
+        	tm.tm_min,
+	        tm.tm_sec,
+        	ts.tv_nsec / 1000000,
+		simtemp_sample.temp/1000,
+		simtemp_sample.temp%1000,
+		simtemp_sample.threshold_alert);
+	head = (head + 1) % BUF_COUNT;
+	if (count < BUF_COUNT)
+        	count++;
+	else
+        	tail = (tail + 1) % BUF_COUNT; // overwrite oldest
+	spin_unlock_irqrestore(&data_lock, flags);
+}
 
 
 /*
@@ -217,6 +236,11 @@ static unsigned int my_poll(struct file *filp, struct poll_table_struct *wait)
 
 static int __simtemp_init(void)
 {
+	simtemp_sample.temp = 0;
+	simtemp_sample.threshold_alert = false;
+	simtemp_sample.new_sample = false;
+	scnprintf(simtemp_sample.mode_buf, TXT_BUF_SIZE, "RAMP");
+
 	/*Init miscdevice */
 	pr_info("simtemp - Register misc device\n");
 

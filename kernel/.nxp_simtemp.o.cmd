@@ -968,7 +968,6 @@ deps_/home/danie/simtemp/kernel/nxp_simtemp.o := \
     $(wildcard include/config/HAVE_MOD_ARCH_SPECIFIC) \
     $(wildcard include/config/MODULES_USE_ELF_REL) \
     $(wildcard include/config/MODULES_USE_ELF_RELA) \
-  /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/linux/kthread.h \
   /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/linux/poll.h \
   /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/uapi/linux/poll.h \
   arch/arm64/include/generated/uapi/asm/poll.h \

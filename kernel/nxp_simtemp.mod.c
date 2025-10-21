@@ -23,10 +23,14 @@ __used __section("__versions") = {
 	{ 0xe914e41e, "strcpy" },
 	{ 0x98cf60b3, "strlen" },
 	{ 0x122c3a7e, "_printk" },
+	{ 0x9ec6ca96, "ktime_get_real_ts64" },
+	{ 0xfff5afc, "time64_to_tm" },
+	{ 0xaafdc258, "strcasecmp" },
 	{ 0x34db050b, "_raw_spin_lock_irqsave" },
 	{ 0x96848186, "scnprintf" },
 	{ 0xd35cce70, "_raw_spin_unlock_irqrestore" },
 	{ 0xe2964344, "__wake_up" },
+	{ 0xd36dc10c, "get_random_u32" },
 	{ 0x2002cbd1, "misc_register" },
 	{ 0x5aa1431d, "device_create_file" },
 	{ 0xea82d349, "hrtimer_init" },
@@ -38,13 +42,9 @@ __used __section("__versions") = {
 	{ 0x6cbbfc54, "__arch_copy_to_user" },
 	{ 0x7682ba4e, "__copy_overflow" },
 	{ 0xf0fdf6cb, "__stack_chk_fail" },
-	{ 0x9ec6ca96, "ktime_get_real_ts64" },
-	{ 0xfff5afc, "time64_to_tm" },
-	{ 0xaafdc258, "strcasecmp" },
 	{ 0x2d3385d3, "system_wq" },
 	{ 0xc5b6f236, "queue_work_on" },
 	{ 0x135bb7ec, "hrtimer_forward" },
-	{ 0xd36dc10c, "get_random_u32" },
 	{ 0x43024713, "device_show_int" },
 	{ 0xaae150ee, "device_store_int" },
 	{ 0x474e54d2, "module_layout" },
@@ -53,4 +53,4 @@ __used __section("__versions") = {
 MODULE_INFO(depends, "");
 
 
-MODULE_INFO(srcversion, "2196A885426E2B8CF63A73C");
+MODULE_INFO(srcversion, "D47B7C6CE33DB8D6CB2F824");
