@@ -60,18 +60,17 @@ struct tm tm;
 /* HR timer functions*/
 
 static void my_work_handler(struct work_struct *work)
-{	
+{
 	temp_read();
 
 	simtemp_sample.new_sample = true;
-	pr_info("New sample available");
 	wake_up(&temp_waitqueue);
 
 	pr_info("%s", kernel_buffer[(head - 1 + BUF_COUNT) % BUF_COUNT]);
 
 	if (simtemp_sample.temp> threshold_mC && !simtemp_sample.threshold_alert) {
 		simtemp_sample.threshold_alert = 1;
-		wake_up_interruptible(&temp_waitqueue); // notify waiting processes
+		wake_up(&temp_waitqueue); // notify waiting processes
 		pr_info("Temperature threshold exceeded: %d\n",simtemp_sample.temp);
 	}
 	simtemp_sample.new_sample=false;
@@ -163,16 +162,16 @@ static ssize_t my_read(struct file *filp, char __user *buf, size_t len, loff_t *
 */
 static unsigned int my_poll(struct file *filp, struct poll_table_struct *wait)
 {
-  __poll_t mask = 0;
-  
+  	__poll_t mask = 0;
+
 	poll_wait(filp, &temp_waitqueue, wait);
-	pr_info("Poll function\n");
-  
+	//pr_info("Poll function\n");
+
 	if (simtemp_sample.threshold_alert)
 		mask |= POLLIN | POLLRDNORM; // readable
 
 	if (simtemp_sample.new_sample)
-		mask |= POLLIN | POLLRDNORM; // readable
+		mask |= POLLPRI; // readable
 
 	return mask;
 }
@@ -194,7 +193,7 @@ static void temp_read(void)
 	if(!strcasecmp(simtemp_sample.mode_buf, "RAMP"))
 		simtemp_sample.temp+= 100;				// Increment temperature in 100mdegC
 	else if (!strcasecmp(simtemp_sample.mode_buf, "NOISY"))
-		simtemp_sample.temp= get_random_u32() % 100000;	// Random temperature values
+ 		simtemp_sample.temp= get_random_u32() % 100000;	// Random temperature values
 	else if	(!strcasecmp(simtemp_sample.mode_buf, "NORMAL")) 
 		simtemp_sample.temp= 25000;				// Set temperature to 25degC
 	else 						// If an incorrect mode is selected
@@ -236,6 +235,7 @@ static void temp_read(void)
 
 static int __simtemp_init(void)
 {
+	// Control variables initialization
 	simtemp_sample.temp = 0;
 	simtemp_sample.threshold_alert = false;
 	simtemp_sample.new_sample = false;
