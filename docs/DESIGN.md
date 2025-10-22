@@ -4,7 +4,7 @@ flowchart TB
     %% USER SPACE
     %% ===========
     subgraph USER_SPACE[User Space]
-        APP[User Application<br><br>• read(), write(), ioctl()<br>• uses epoll() for notifications]
+        APP[User Application<br><br>* read(), write(), ioctl()<br>• uses epoll() for notifications]
     end
 
     %% ===========
