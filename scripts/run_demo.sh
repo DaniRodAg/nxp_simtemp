@@ -3,7 +3,10 @@ insmod ../kernel/nxp_simtemp.ko || exit 1
 dmesg | tail -n 1
 
 #!/bin/bash
-gnome-terminal -- bash -c "../kernel/main_app"
+#gnome-terminal -- bash -c "../kernel/main_app"
+
+gnome-terminal -- bash -c "python3 ../user/gui/app.py; exec bash"
+
 
 # Read parameters inside sys/class/misc/simtemp
 echo "simtemp parameters"
@@ -16,11 +19,13 @@ cat /sys/class/misc/simtemp/sampling_ms
 
 #dmesg | tail
 
-echo "Waiting for 5 seconds..."
+echo "Waiting for 20 seconds..."
 sleep 6
 
 echo "Reading data written inside /dev/simtemp"
-cat /dev/simtemp
+#cat /dev/simtemp
+
+#python3 ../user/gui/app.py
 
 #dmesg | tail
 
@@ -42,14 +47,16 @@ sleep 2
 
 echo "Setting mode to ramp"
 echo "RAMP" > /sys/class/misc/simtemp/mode
-cat /sys/class/misc/simtemp/mode
+#cat /sys/class/misc/simtemp/mode
 
 #dmesg | tail
 
 echo "Waiting for 11 seconds..."
 sleep 11
 
-cat /dev/simtemp
+#python3 ../user/gui/app.py
+
+#cat /dev/simtemp
 
 echo "Changing mode to normal"
 echo "NORMAL" > /sys/class/misc/simtemp/mode
@@ -65,7 +72,7 @@ cat /sys/class/misc/simtemp/mode
 
 sleep 2
 
-cat /dev/simtemp
+#cat /dev/simtemp
 
 sleep 2
 
@@ -73,7 +80,7 @@ sleep 2
 
 read -n 1 -s
 
-pkill main_app
+#pkill main_app
 rmmod ../kernel/nxp_simtemp.ko
 
 dmesg | tail

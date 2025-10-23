@@ -130,17 +130,17 @@ static int my_release(struct inode *inode, struct file *file)
 */
 static ssize_t my_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
 {
-        char kbuf[BUF_COUNT * BUF_SIZE];
+        char kbuf[BUF_COUNT * BUF_SIZE/2];
         size_t total_len = 0;
         int i;
         unsigned long flags;
 
-        if (*off > 0)
-                return 0; // only allow one read per open()
+//        if (*off > 0)
+//                return 0; // only allow one read per open()
 
         spin_lock_irqsave(&data_lock, flags);
         for (i = 0; i < count; i++) {
-                int idx = (tail + i) % BUF_COUNT;
+                int idx = (tail + i) % (BUF_COUNT);
                 total_len += scnprintf(kbuf + total_len, sizeof(kbuf) - total_len, "%s", kernel_buffer[idx]);
                 if (total_len >= sizeof(kbuf))
                         break;
@@ -208,7 +208,7 @@ static void temp_read(void)
 	spin_lock_irqsave(&data_lock, flags);
 
 	/* Print current time and data */
-	scnprintf(kernel_buffer[head],BUF_COUNT,
+	scnprintf(kernel_buffer[head],BUF_SIZE,
 		"%04ld-%02d-%02d %02d:%02d:%02d.%03ld UTC temp=%03d.%dC alert=%d\n",
 	        tm.tm_year + 1900,
 	        tm.tm_mon + 1,
@@ -221,7 +221,7 @@ static void temp_read(void)
 		simtemp_sample.temp%1000,
 		simtemp_sample.threshold_alert);
 	head = (head + 1) % BUF_COUNT;
-	if (count < BUF_COUNT)
+	if (count < BUF_COUNT/2)
         	count++;
 	else
         	tail = (tail + 1) % BUF_COUNT; // overwrite oldest

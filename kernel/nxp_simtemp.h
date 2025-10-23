@@ -31,7 +31,7 @@ MODULE_DESCRIPTION("Virtual Sensor + Alert Path");
 
 /* --- Defines ---*/
 #define TXT_BUF_SIZE 10
-#define BUF_COUNT    64		// number of readings stored
+#define BUF_COUNT    16		// number of readings stored
 #define BUF_SIZE     64		// max length per entry
 
 /* --- Function prototypes --- */
