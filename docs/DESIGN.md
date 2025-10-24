@@ -4,22 +4,22 @@ flowchart TB
     %% USER SPACE
     %% ===========
     subgraph USER_SPACE["User Space"]
-        APP["User Application\n(read, write, ioctl, epoll)"]
+        APP["User Application\n(open, read, write, epoll, close)"]
     end
 
     %% ===========
     %% KERNEL SPACE
     %% ===========
     subgraph KERNEL_SPACE["Kernel Space"]
-        SYSFS["SYSFS\nStores driver and device info"]
-        ATTR["SYSFS Attributes\nExpose configuration controls"]
-        VFS["VFS Layer\nDispatches syscalls to file_operations"]
-        CHAR_FILE["Character Device File\n(/dev/mydevice)"]
-        DRIVER["Character Device Driver\n(read, write, poll, ioctl)"]
-        ISR["Interrupt Handler\nHandles hardware interrupts"]
+        subgraph MISC_DEVICE["Misc Device"]
+            MISC_DEVICE["MISC_EVICE: Exposes a character device with a fixed Major number (10), lacks the versatility but eases the driver initialization.
+                         Automatically exposes a device file inside '/sys/class/misc/' and allocates the required memory usage for the device file."]
+            CHAR_FILE["Character device file: Character Device File\n(/dev/mydevice), exposed by misc device driver functions."]
+            SYSFS["SYSFS\nVirtual file system to acces hardware. Mean to export kobjects"]
+            ATTR["ATTR Virtual files that expose configuration control. These files are controled by the file operation system or fops functions(read, write, poll, ioctl)"]
+        end
         WAITQ["Wait Queue\nBlocks until data is ready"]
         WORKQ["Work Queue\nDefers heavy work to kernel thread"]
-        HARDWARE["Hardware Device\n(Sensor, Peripheral, Controller)"]
     end
 
     %% ===========
@@ -40,3 +40,19 @@ flowchart TB
     %% Epoll notification path
     DRIVER -->|"notify readiness"| EPOLL["Epoll Events"]
     EPOLL --> APP
+
+```
+# Interactions
+
+
+
+
+
+
+
+
+
+
+
+
+
