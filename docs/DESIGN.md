@@ -11,7 +11,7 @@ flowchart TB
     %% KERNEL SPACE
     %% ===========
     subgraph KERNEL_SPACE["Kernel Space"]
-        subgraph MISC_DEVICE["Misc Device"]
+        subgraph MISC_DEVICE_DRIVER["Misc Device"]
             MISC_DEVICE["MISC_EVICE: Exposes a character device with a fixed Major number (10), lacks the versatility but eases the driver initialization.
                          Automatically exposes a device file inside '/sys/class/misc/' and allocates the required memory usage for the device file."]
             CHAR_FILE["Character device file: Character Device File\n(/dev/mydevice), exposed by misc device driver functions."]
