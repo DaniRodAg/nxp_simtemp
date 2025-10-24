@@ -1,4 +1,6 @@
 # Insert the module
+
+#rmmod ../kernel/nxp_simtemp.ko || exit 1
 insmod ../kernel/nxp_simtemp.ko || exit 1
 dmesg | tail -n 1
 
