@@ -76,13 +76,13 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QHBoxLayout(central_widget)
         self.setCentralWidget(central_widget)
 
+        layout.addWidget(Color('Green'))
+
         # Temperature Label
         self.temp_label = QLabel("Temperature: -- C") 
         self.temp_label.setFixedHeight(200)   # <-- keeps it visible
         self.temp_label.setStyleSheet("font-size: 14px; padding: 4px;")
         layout.addWidget(self.temp_label)
-
-        
 
         # PyQtGraph setup
         self.plot_graph = pg.PlotWidget(title="Temperature vs Time")
