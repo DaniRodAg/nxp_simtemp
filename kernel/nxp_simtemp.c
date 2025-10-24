@@ -42,7 +42,7 @@ ssize_t mode_show(struct device *d, struct device_attribute *a,
 DEVICE_ATTR(mode, 0660, mode_show, mode_store);
 
 /* SAMPLING ATTRIBUTES */
-static int sampling_ms = 2000;
+static int sampling_ms = 1000;
 DEVICE_INT_ATTR(sampling_ms, 0660, sampling_ms);
 
 /* THRESHOLD ALERT ATTRIBUTES */
@@ -63,17 +63,19 @@ static void my_work_handler(struct work_struct *work)
 {
 	temp_read();
 
-	simtemp_sample.new_sample = true;
-	wake_up(&temp_waitqueue);
+	if ((count == (BUF_COUNT/2)) && (((tail) % (BUF_COUNT/2)) == 0)) {
+		wake_up_interruptible(&temp_waitqueue);
+        	pr_info("%d, %d, %d", tail, tail%BUF_COUNT, count);
+	}
 
 	pr_info("%s", kernel_buffer[(head - 1 + BUF_COUNT) % BUF_COUNT]);
 
 	if (simtemp_sample.temp> threshold_mC && !simtemp_sample.threshold_alert) {
 		simtemp_sample.threshold_alert = 1;
-		wake_up(&temp_waitqueue); // notify waiting processes
+		wake_up_interruptible(&temp_waitqueue); // notify waiting processes
 		pr_info("Temperature threshold exceeded: %d\n",simtemp_sample.temp);
 	}
-	simtemp_sample.new_sample=false;
+
 }
 
 /* HR timer callback for periodic timer */
@@ -165,14 +167,16 @@ static unsigned int my_poll(struct file *filp, struct poll_table_struct *wait)
   	__poll_t mask = 0;
 
 	poll_wait(filp, &temp_waitqueue, wait);
-	//pr_info("Poll function\n");
+	pr_info("Poll function\n");
 
-	if (simtemp_sample.threshold_alert)
+	if (simtemp_sample.threshold_alert) {
 		mask |= POLLIN | POLLRDNORM; // readable
-
-	if (simtemp_sample.new_sample)
+		simtemp_sample.threshold_alert = false;
+	}
+	if (simtemp_sample.new_sample) {
 		mask |= POLLPRI; // readable
-
+		simtemp_sample.new_sample=false;
+	}
 	return mask;
 }
 
@@ -225,6 +229,7 @@ static void temp_read(void)
         	count++;
 	else
         	tail = (tail + 1) % BUF_COUNT; // overwrite oldest
+	simtemp_sample.new_sample = true;
 	spin_unlock_irqrestore(&data_lock, flags);
 }
 
