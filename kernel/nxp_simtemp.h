@@ -24,6 +24,10 @@
 #include <linux/err.h>
 #include <linux/random.h>
 
+#include <linux/platform_device.h>
+#include <linux/of.h>
+
+
 /* METADATA */
 MODULE_LICENSE("GPL");                  /*Open source license*/
 MODULE_AUTHOR("Daniel Rodriguez");
@@ -35,6 +39,8 @@ MODULE_DESCRIPTION("Virtual Sensor + Alert Path");
 #define BUF_SIZE     64		// max length per entry
 
 /* --- Function prototypes --- */
+static int simtemp_probe(struct platform_device *pdev);
+static void simtemp_remove(struct platform_device *pdev);
 static enum hrtimer_restart my_hrtimer_handler(struct hrtimer *timer);
 ssize_t mode_store(struct device *d, struct device_attribute *a, 
                    const char *buf, size_t len);

@@ -1,12 +1,45 @@
 #include <linux/kernel.h>		/*Needed for Kern alert*/
 #include "nxp_simtemp.h"
 
+static const struct of_device_id simtemp_of_match[] = {
+    { .compatible = "nxp,simtemp" },
+    { }
+};
+MODULE_DEVICE_TABLE(of, simtemp_of_match);
+
 static struct {
 	int temp;
 	char mode_buf[TXT_BUF_SIZE];
 	bool new_sample;
 	bool threshold_alert;
 }simtemp_sample;
+
+static struct platform_driver simtemp_driver = {
+    .probe = simtemp_probe,
+    .remove = simtemp_remove,
+    .driver = {
+        .name = "simtemp",
+        .of_match_table = simtemp_of_match,
+    },
+};
+
+
+/* MISC DEVICE */
+
+static const struct file_operations fops = {
+	.owner = THIS_MODULE,
+	.read = my_read,
+	.open = my_open,
+	.release = my_release,
+	.poll = my_poll
+};
+
+static struct miscdevice simtemp_device = {
+	.name = "simtemp",
+	.minor = MISC_DYNAMIC_MINOR,
+	.fops = &fops,
+};
+
 
 //Queues and spinlocks
 static DECLARE_WAIT_QUEUE_HEAD(temp_waitqueue); //Wait queue for poll events
@@ -57,6 +90,101 @@ ktime_t interval;
 struct timespec64 ts;
 struct tm tm;
 
+/*
+** @brief This function is called, when the module is loaded into the kernel
+*/
+
+static int __simtemp_init(void)
+{
+    	printk("dt_probe - Loading the driver...\n");
+	if(platform_driver_register(&simtemp_driver)) {
+		printk("dt_probe - Error! Could not load driver\n");
+		return -1;
+	}
+	return 0;
+}
+
+/*
+** @brief This function is called, when the module is loaded into the kernel
+*/
+
+/*
+** @brief This function is called, when the module is removed from the kernel
+*/
+
+static void __simtemp_exit(void)
+{	printk("dt_probe - Unload driver");
+	platform_driver_unregister(&simtemp_driver);
+
+	pr_notice("simtemp - Goodbye, Kernel!\n");
+}
+
+
+static int simtemp_probe(struct platform_device *pdev)
+{
+    	struct device *dev = &pdev->dev;
+    	/* Parse properties from DT */
+	if (of_property_read_u32(dev->of_node, "sampling-ms", &sampling_ms))
+		dev_warn(dev, "sample-rate not found, using default\n");
+	if (of_property_read_u32(dev->of_node, "threshold", &threshold_mC))
+		dev_warn(dev, "threshold not found, using default\n");
+
+	dev_info(dev, "Sample rate=%u Hz, threshold=%u C\n", sampling_ms, threshold_mC);
+
+	// Control variables initialization
+	simtemp_sample.temp = 0;
+	simtemp_sample.threshold_alert = false;
+	simtemp_sample.new_sample = false;
+	scnprintf(simtemp_sample.mode_buf, TXT_BUF_SIZE, "RAMP");
+
+	/*Init miscdevice */
+	pr_info("simtemp - Register misc device\n");
+
+	// Register misc char device
+	if(misc_register(&simtemp_device)) {
+		return -ENODEV;
+	}
+	// CREATE SAMPLING TIME FILE 
+	if(device_create_file(simtemp_device.this_device, &dev_attr_sampling_ms.attr)) {
+                return -ENODEV;
+        }
+	// CREATE THRESHOLD FILE
+	if(device_create_file(simtemp_device.this_device, &dev_attr_threshold_mC.attr)) {
+                return -ENODEV;
+        }
+	// CREATE MODE FILE
+	if(device_create_file(simtemp_device.this_device, &dev_attr_mode)) {
+                return -ENODEV;
+        }
+
+
+
+	/* Init of hrtimer */
+	ktime_t interval = ms_to_ktime(1000); 
+	hrtimer_init(&my_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	my_hrtimer.function = &my_hrtimer_handler;
+	hrtimer_start(&my_hrtimer, interval, HRTIMER_MODE_REL);
+
+	return 0;
+}
+
+
+
+/*
+** @brief This function is called, when the module is removed from the kernel
+*/
+
+static void simtemp_remove(struct platform_device *pdev)
+{
+	hrtimer_cancel(&my_hrtimer);
+
+	device_remove_file(simtemp_device.this_device, &dev_attr_sampling_ms.attr);
+	device_remove_file(simtemp_device.this_device, &dev_attr_threshold_mC.attr);
+	device_remove_file(simtemp_device.this_device, &dev_attr_mode);
+	misc_deregister(&simtemp_device);
+	pr_notice("simtemp - Goodbye, Kernel!\n");
+}
+
 /* HR timer functions*/
 
 static void my_work_handler(struct work_struct *work)
@@ -90,23 +218,6 @@ static enum hrtimer_restart my_hrtimer_handler(struct hrtimer *timer)
 
 	return HRTIMER_RESTART; 			// keep the timer running
 }
-
-
-/* MISC DEVICE */
-
-static const struct file_operations fops = {
-	.owner = THIS_MODULE,
-	.read = my_read,
-	.open = my_open,
-	.release = my_release,
-	.poll = my_poll
-};
-
-static struct miscdevice simtemp_device = {
-	.name = "simtemp",
-	.minor = MISC_DYNAMIC_MINOR,
-	.fops = &fops,
-};
 
 /*
 ** @brief This function is called, when the Device file is opened
@@ -234,68 +345,7 @@ static void temp_read(void)
 }
 
 
-/*
-** @brief This function is called, when the module is loaded into the kernel
-*/
-
-static int __simtemp_init(void)
-{
-	// Control variables initialization
-	simtemp_sample.temp = 0;
-	simtemp_sample.threshold_alert = false;
-	simtemp_sample.new_sample = false;
-	scnprintf(simtemp_sample.mode_buf, TXT_BUF_SIZE, "RAMP");
-
-	/*Init miscdevice */
-	pr_info("simtemp - Register misc device\n");
-
-	// Register misc char device
-	if(misc_register(&simtemp_device)) {
-		return -ENODEV;
-	}
-	// CREATE SAMPLING TIME FILE 
-	if(device_create_file(simtemp_device.this_device, &dev_attr_sampling_ms.attr)) {
-                return -ENODEV;
-        }
-	// CREATE THRESHOLD FILE
-	if(device_create_file(simtemp_device.this_device, &dev_attr_threshold_mC.attr)) {
-                return -ENODEV;
-        }
-	// CREATE MODE FILE
-	if(device_create_file(simtemp_device.this_device, &dev_attr_mode)) {
-                return -ENODEV;
-        }
-
-
-
-	/* Init of hrtimer */
-	ktime_t interval = ms_to_ktime(1000); 
-	hrtimer_init(&my_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	my_hrtimer.function = &my_hrtimer_handler;
-	hrtimer_start(&my_hrtimer, interval, HRTIMER_MODE_REL);
-
-	return 0;
-}
-
-
-/*
-** @brief This function is called, when the module is removed from the kernel
-*/
-
-static void __simtemp_exit(void)
-{
-	hrtimer_cancel(&my_hrtimer);
-
-	device_remove_file(simtemp_device.this_device, &dev_attr_sampling_ms.attr);
-	device_remove_file(simtemp_device.this_device, &dev_attr_threshold_mC.attr);
-	device_remove_file(simtemp_device.this_device, &dev_attr_mode);
-	misc_deregister(&simtemp_device);
-	pr_notice("simtemp - Goodbye, Kernel!\n");
-}
-
 module_init(__simtemp_init);
 module_exit(__simtemp_exit);
-
-
 
 

@@ -72,6 +72,9 @@ echo "NOISY" > /dev/simtemp
 
 Temperature threshold alerts are signaled via epoll.
 
+---
+
+
 ## GUI
 
 Launches a window with:
@@ -82,6 +85,7 @@ Vertical buffer of last 8 readings.
 
 Updates automatically as new data arrives.
 
+---
 
 ## Implementation Notes
 
@@ -99,10 +103,13 @@ Emits signals for thread-safe GUI updates.
 
 Buffers readings and computes delta times.
 
+---
 
 ## License
 
 MIT License
+
+---
 
 ## Author 
 Daniel Josue Rodriguez Agraz

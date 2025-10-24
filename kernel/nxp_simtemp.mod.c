@@ -23,6 +23,10 @@ __used __section("__versions") = {
 	{ 0xe914e41e, "strcpy" },
 	{ 0x98cf60b3, "strlen" },
 	{ 0x122c3a7e, "_printk" },
+	{ 0xfa474811, "__platform_driver_register" },
+	{ 0x102fe6de, "hrtimer_cancel" },
+	{ 0x5ec9a568, "device_remove_file" },
+	{ 0x94090688, "misc_deregister" },
 	{ 0x9ec6ca96, "ktime_get_real_ts64" },
 	{ 0xfff5afc, "time64_to_tm" },
 	{ 0xaafdc258, "strcasecmp" },
@@ -31,13 +35,14 @@ __used __section("__versions") = {
 	{ 0xd35cce70, "_raw_spin_unlock_irqrestore" },
 	{ 0xe2964344, "__wake_up" },
 	{ 0xd36dc10c, "get_random_u32" },
+	{ 0x80192c9b, "of_property_read_variable_u32_array" },
+	{ 0x637962ed, "_dev_info" },
 	{ 0x2002cbd1, "misc_register" },
 	{ 0x5aa1431d, "device_create_file" },
 	{ 0xea82d349, "hrtimer_init" },
 	{ 0xc0b7c197, "hrtimer_start_range_ns" },
-	{ 0x102fe6de, "hrtimer_cancel" },
-	{ 0x5ec9a568, "device_remove_file" },
-	{ 0x94090688, "misc_deregister" },
+	{ 0x9d1f3a80, "_dev_warn" },
+	{ 0x61fd46a9, "platform_driver_unregister" },
 	{ 0xdcb764ad, "memset" },
 	{ 0x6cbbfc54, "__arch_copy_to_user" },
 	{ 0x7682ba4e, "__copy_overflow" },
@@ -52,5 +57,7 @@ __used __section("__versions") = {
 
 MODULE_INFO(depends, "");
 
+MODULE_ALIAS("of:N*T*Cnxp,simtemp");
+MODULE_ALIAS("of:N*T*Cnxp,simtempC*");
 
-MODULE_INFO(srcversion, "277BAB049D2A29F05661D16");
+MODULE_INFO(srcversion, "7B1AF906AF2A6B3D86134B4");

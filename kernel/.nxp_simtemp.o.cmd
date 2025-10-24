@@ -1020,6 +1020,22 @@ deps_/home/danie/simtemp/kernel/nxp_simtemp.o := \
   /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/linux/device/driver.h \
   /usr/src/linux-headers-6.12.47+rpt-common-rpi/arch/arm64/include/asm/device.h \
   /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/linux/pm_wakeup.h \
+  /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/linux/platform_device.h \
+    $(wildcard include/config/SUSPEND) \
+    $(wildcard include/config/HIBERNATE_CALLBACKS) \
+    $(wildcard include/config/SUPERH) \
+  /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/linux/of.h \
+    $(wildcard include/config/OF_DYNAMIC) \
+    $(wildcard include/config/SPARC) \
+    $(wildcard include/config/OF_PROMTREE) \
+    $(wildcard include/config/OF_KOBJ) \
+    $(wildcard include/config/OF_NUMA) \
+    $(wildcard include/config/OF_OVERLAY) \
+  /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/linux/mod_devicetable.h \
+  /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/uapi/linux/mei.h \
+  /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/uapi/linux/mei_uuid.h \
+  /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/linux/property.h \
+  /usr/src/linux-headers-6.12.47+rpt-common-rpi/include/linux/fwnode.h \
 
 /home/danie/simtemp/kernel/nxp_simtemp.o: $(deps_/home/danie/simtemp/kernel/nxp_simtemp.o)
 

@@ -76,8 +76,6 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QHBoxLayout(central_widget)
         self.setCentralWidget(central_widget)
 
-        layout.addWidget(Color('Green'))
-
         # Temperature Label
         self.temp_label = QLabel("Temperature: -- C") 
         self.temp_label.setFixedHeight(200)   # <-- keeps it visible

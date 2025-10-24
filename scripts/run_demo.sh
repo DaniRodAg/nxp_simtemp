@@ -1,6 +1,8 @@
-# Insert the module
 
-#rmmod ../kernel/nxp_simtemp.ko || exit 1
+dtoverlay ../kernel/simtemp.dtbo
+
+# Insert the module
+rmmod ../kernel/nxp_simtemp.ko
 insmod ../kernel/nxp_simtemp.ko || exit 1
 dmesg | tail -n 1
 

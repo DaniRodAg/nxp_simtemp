@@ -1,0 +1,17 @@
+/dts-v1/;
+/plugin/;
+/ {
+	compatible = "brcm,bcm2835";
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			simtemp {
+				compatible = "nxp,simtemp";
+				status = "okay";
+				label = "Test";
+				sampling-ms = <1000>;
+				threshold = <75000>;
+			};
+		};
+	};
+};
